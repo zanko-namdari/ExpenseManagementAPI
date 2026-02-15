@@ -1,6 +1,7 @@
 from fastapi import FastAPI, HTTPException, status
 from pydantic import BaseModel
 from typing import Dict
+from core.schemas import ExpenseOutSchema, ExpenseCreateUpdateSchema
 
 
 app=FastAPI(title="Expense Management API", description="API for managing expenses", version="1.0.0")
@@ -23,8 +24,8 @@ class ExpenseOut(BaseModel):
 # ------------------------
 # Create - POST
 # ------------------------
-@app.post("/expenses", response_model=ExpenseOut, status_code=status.HTTP_201_CREATED)
-def create_expense(expense: Expense):
+@app.post("/expenses", response_model=ExpenseOutSchema, status_code=status.HTTP_201_CREATED)
+def create_expense(expense: ExpenseCreateUpdateSchema):
     global current_id
 
     new_expense = {
@@ -42,7 +43,7 @@ def create_expense(expense: Expense):
 # ------------------------
 # Read All - GET
 # ------------------------
-@app.get("/expenses", response_model=list[ExpenseOut])
+@app.get("/expenses", response_model=list[ExpenseOutSchema])
 def get_expenses():
     return list(expenses.values())
 
@@ -50,7 +51,7 @@ def get_expenses():
 # ------------------------
 # Read One - GET by ID
 # ------------------------
-@app.get("/expenses/{expense_id}", response_model=ExpenseOut)
+@app.get("/expenses/{expense_id}", response_model=ExpenseOutSchema)
 def get_expense(expense_id: int):
     if expense_id not in expenses:
         raise HTTPException(status_code=404, detail="Expense not found")
@@ -61,8 +62,8 @@ def get_expense(expense_id: int):
 # ------------------------
 # Update - PUT
 # ------------------------
-@app.put("/expenses/{expense_id}", response_model=ExpenseOut)
-def update_expense(expense_id: int, expense: Expense):
+@app.put("/expenses/{expense_id}", response_model=ExpenseOutSchema)
+def update_expense(expense_id: int, expense: ExpenseCreateUpdateSchema):
     if expense_id not in expenses:
         raise HTTPException(status_code=404, detail="Expense not found")
 
