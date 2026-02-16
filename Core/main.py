@@ -1,87 +1,112 @@
-from fastapi import FastAPI, HTTPException, status
-from pydantic import BaseModel
-from typing import Dict
+from fastapi import FastAPI, HTTPException, status, Depends
+from sqlalchemy.orm import Session
+from contextlib import asynccontextmanager
+
+from core.database import get_db, Transaction
 from core.schemas import ExpenseOutSchema, ExpenseCreateUpdateSchema
 
 
-app=FastAPI(title="Expense Management API", description="API for managing expenses", version="1.0.0")
-
-expenses: Dict[int, dict] = {}
-current_id = 1
-
-
-class Expense(BaseModel):
-    description: str
-    amount: float
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    print("Starting up...")
+    yield
+    print("Shutting down...")
 
 
-class ExpenseOut(BaseModel):
-    id: int
-    description: str
-    amount: float
-
+app = FastAPI(
+    title="Expense Management API",
+    description="API for managing expenses",
+    version="1.0.0",
+    lifespan=lifespan,
+)
 
 # ------------------------
-# Create - POST
+# Create Expense
 # ------------------------
-@app.post("/expenses", response_model=ExpenseOutSchema, status_code=status.HTTP_201_CREATED)
-def create_expense(expense: ExpenseCreateUpdateSchema):
-    global current_id
+@app.post(
+    "/expenses",
+    response_model=ExpenseOutSchema,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_expense(
+    expense: ExpenseCreateUpdateSchema,
+    db: Session = Depends(get_db),
+):
+    new_expense = Transaction(
+        description=expense.description,
+        amount=expense.amount,
+        type="expense",
+    )
 
-    new_expense = {
-        "id": current_id,
-        "description": expense.description,
-        "amount": expense.amount
-    }
-
-    expenses[current_id] = new_expense
-    current_id += 1
+    db.add(new_expense)
+    db.commit()
+    db.refresh(new_expense)
 
     return new_expense
 
 
 # ------------------------
-# Read All - GET
+# Read All Expenses
 # ------------------------
 @app.get("/expenses", response_model=list[ExpenseOutSchema])
-def get_expenses():
-    return list(expenses.values())
+def get_expenses(db: Session = Depends(get_db)):
+    return db.query(Transaction).filter(Transaction.type == "expense").all()
 
 
 # ------------------------
-# Read One - GET by ID
+# Read One Expense
 # ------------------------
 @app.get("/expenses/{expense_id}", response_model=ExpenseOutSchema)
-def get_expense(expense_id: int):
-    if expense_id not in expenses:
+def get_expense(expense_id: int, db: Session = Depends(get_db)):
+    expense = db.query(Transaction).filter(
+        Transaction.id == expense_id,
+        Transaction.type == "expense"
+    ).first()
+
+    if not expense:
         raise HTTPException(status_code=404, detail="Expense not found")
 
-    return expenses[expense_id]
+    return expense
 
 
 # ------------------------
-# Update - PUT
+# Update Expense
 # ------------------------
 @app.put("/expenses/{expense_id}", response_model=ExpenseOutSchema)
-def update_expense(expense_id: int, expense: ExpenseCreateUpdateSchema):
-    if expense_id not in expenses:
+def update_expense(
+    expense_id: int,
+    data: ExpenseCreateUpdateSchema,
+    db: Session = Depends(get_db),
+):
+    expense = db.query(Transaction).filter(
+        Transaction.id == expense_id,
+        Transaction.type == "expense"
+    ).first()
+
+    if not expense:
         raise HTTPException(status_code=404, detail="Expense not found")
 
-    updated = {
-        "id": expense_id,
-        "description": expense.description,
-        "amount": expense.amount
-    }
+    expense.description = data.description
+    expense.amount = data.amount
 
-    expenses[expense_id] = updated
-    return updated
+    db.commit()
+    db.refresh(expense)
+
+    return expense
+
 
 # ------------------------
-# Delete - DELETE
+# Delete Expense
 # ------------------------
-@app.delete("/expenses/{expense_id}", status_code=204)
-def delete_expense(expense_id: int):
-    if expense_id not in expenses:
+@app.delete("/expenses/{expense_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_expense(expense_id: int, db: Session = Depends(get_db)):
+    expense = db.query(Transaction).filter(
+        Transaction.id == expense_id,
+        Transaction.type == "expense"
+    ).first()
+
+    if not expense:
         raise HTTPException(status_code=404, detail="Expense not found")
 
-    del expenses[expense_id]
+    db.delete(expense)
+    db.commit()
